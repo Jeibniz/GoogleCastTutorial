@@ -18,6 +18,7 @@ package com.google.sample.cast.refplayer.mediaplayer;
 
 import com.android.volley.toolbox.ImageLoader;
 import com.android.volley.toolbox.NetworkImageView;
+import com.google.android.gms.cast.framework.CastContext;
 import com.google.sample.cast.refplayer.R;
 import com.google.sample.cast.refplayer.settings.CastPreference;
 import com.google.sample.cast.refplayer.utils.CustomVolleyRequest;
@@ -89,6 +90,7 @@ public class LocalPlayerActivity extends AppCompatActivity {
     private TextView mAuthorView;
     private ImageButton mPlayCircle;
     private PlaybackLocation mLocation;
+    private CastContext mCastContext;
 
     /**
      * indicates whether we are doing a local or a remote playback
@@ -110,6 +112,9 @@ public class LocalPlayerActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.player_activity);
         loadViews();
+
+        mCastContext = CastContext.getSharedInstance(this);
+
         setupControlsCallbacks();
         // see what we need to play and where
         Bundle bundle = getIntent().getExtras();
