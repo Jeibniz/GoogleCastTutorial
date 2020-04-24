@@ -18,12 +18,21 @@ package com.google.sample.cast.refplayer.mediaplayer;
 
 import com.android.volley.toolbox.ImageLoader;
 import com.android.volley.toolbox.NetworkImageView;
+import com.google.android.gms.cast.MediaLoadRequestData;
 import com.google.android.gms.cast.framework.CastContext;
 import com.google.sample.cast.refplayer.R;
 import com.google.sample.cast.refplayer.settings.CastPreference;
 import com.google.sample.cast.refplayer.utils.CustomVolleyRequest;
 import com.google.sample.cast.refplayer.utils.MediaItem;
 import com.google.sample.cast.refplayer.utils.Utils;
+import com.google.android.gms.cast.framework.CastSession;
+import com.google.android.gms.cast.framework.SessionManagerListener;
+import com.google.android.gms.cast.framework.media.RemoteMediaClient;
+import com.google.android.gms.cast.MediaInfo;
+import com.google.android.gms.cast.MediaLoadOptions;
+import com.google.android.gms.cast.MediaMetadata;
+import com.google.android.gms.common.images.WebImage;
+
 
 import android.annotation.SuppressLint;
 import android.content.Intent;
@@ -91,6 +100,8 @@ public class LocalPlayerActivity extends AppCompatActivity {
     private ImageButton mPlayCircle;
     private PlaybackLocation mLocation;
     private CastContext mCastContext;
+    private CastSession mCastSession;
+    private SessionManagerListener<CastSession> mSessionManagerListener;
 
     /**
      * indicates whether we are doing a local or a remote playback
@@ -113,9 +124,11 @@ public class LocalPlayerActivity extends AppCompatActivity {
         setContentView(R.layout.player_activity);
         loadViews();
 
-        mCastContext = CastContext.getSharedInstance(this);
-
         setupControlsCallbacks();
+        setupCastListener();
+        mCastContext = CastContext.getSharedInstance(this);
+        mCastSession = mCastContext.getSessionManager().getCurrentCastSession();
+
         // see what we need to play and where
         Bundle bundle = getIntent().getExtras();
         if (bundle != null) {
@@ -137,13 +150,17 @@ public class LocalPlayerActivity extends AppCompatActivity {
                 mVideoView.start();
                 startControllersTimer();
             } else {
-                // we should load the video but pause it
-                // and show the album art.
-                updatePlaybackLocation(PlaybackLocation.LOCAL);
+
+                if (mCastSession != null && mCastSession.isConnected()) {
+                    updatePlaybackLocation(PlaybackLocation.REMOTE);
+                } else {
+                    updatePlaybackLocation(PlaybackLocation.LOCAL);
+                }
                 mPlaybackState = PlaybackState.IDLE;
                 updatePlayButton(mPlaybackState);
             }
         }
+
         if (mTitleView != null) {
             updateMetadata(true);
         }
@@ -177,6 +194,7 @@ public class LocalPlayerActivity extends AppCompatActivity {
             case REMOTE:
                 mPlaybackState = PlaybackState.BUFFERING;
                 updatePlayButton(mPlaybackState);
+                mCastSession.getRemoteMediaClient().seek(position);
                 break;
             default:
                 break;
@@ -221,6 +239,9 @@ public class LocalPlayerActivity extends AppCompatActivity {
                         updatePlaybackLocation(PlaybackLocation.LOCAL);
                         break;
                     case REMOTE:
+                        if (mCastSession != null && mCastSession.isConnected()) {
+                            loadRemoteMedia(mSeekbar.getProgress(), true);
+                        }
                         break;
                     default:
                         break;
@@ -309,6 +330,10 @@ public class LocalPlayerActivity extends AppCompatActivity {
             mVideoView.pause();
             mPlaybackState = PlaybackState.PAUSED;
             updatePlayButton(PlaybackState.PAUSED);
+
+            // Stop listening to Chormecast
+            mCastContext.getSessionManager().removeSessionManagerListener(
+                    mSessionManagerListener, CastSession.class);
         }
     }
 
@@ -335,7 +360,14 @@ public class LocalPlayerActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         Log.d(TAG, "onResume() was called");
-        updatePlaybackLocation(PlaybackLocation.LOCAL);
+
+        mCastContext.getSessionManager().addSessionManagerListener(
+                mSessionManagerListener, CastSession.class);
+        if (mCastSession != null && mCastSession.isConnected()) {
+            updatePlaybackLocation(PlaybackLocation.REMOTE);
+        } else {
+            updatePlaybackLocation(PlaybackLocation.LOCAL);
+        }
         super.onResume();
     }
 
@@ -475,7 +507,9 @@ public class LocalPlayerActivity extends AppCompatActivity {
 
     private void updatePlayButton(PlaybackState state) {
         Log.d(TAG, "Controls: PlayBackState: " + state);
-        boolean isConnected = false;
+        boolean isConnected = (mCastSession != null)
+                && (mCastSession.isConnected() ||
+                mCastSession.isConnecting());
         mControllers.setVisibility(isConnected ? View.GONE : View.VISIBLE);
         mPlayCircle.setVisibility(isConnected ? View.GONE : View.VISIBLE);
         switch (state) {
@@ -615,5 +649,102 @@ public class LocalPlayerActivity extends AppCompatActivity {
                 togglePlayback();
             }
         });
+    }
+
+    private void setupCastListener() {
+        mSessionManagerListener = new SessionManagerListener<CastSession>() {
+
+            @Override
+            public void onSessionEnded(CastSession session, int error) {
+                onApplicationDisconnected();
+            }
+
+            @Override
+            public void onSessionResumed(CastSession session, boolean wasSuspended) {
+                onApplicationConnected(session);
+            }
+
+            @Override
+            public void onSessionResumeFailed(CastSession session, int error) {
+                onApplicationDisconnected();
+            }
+
+            @Override
+            public void onSessionStarted(CastSession session, String sessionId) {
+                onApplicationConnected(session);
+            }
+
+            @Override
+            public void onSessionStartFailed(CastSession session, int error) {
+                onApplicationDisconnected();
+            }
+
+            @Override
+            public void onSessionStarting(CastSession session) {}
+
+            @Override
+            public void onSessionEnding(CastSession session) {}
+
+            @Override
+            public void onSessionResuming(CastSession session, String sessionId) {}
+
+            @Override
+            public void onSessionSuspended(CastSession session, int reason) {}
+
+            private void onApplicationConnected(CastSession castSession) {
+                mCastSession = castSession;
+                if (null != mSelectedMedia) {
+
+                    if (mPlaybackState == PlaybackState.PLAYING) {
+                        mVideoView.pause();
+                        loadRemoteMedia(mSeekbar.getProgress(), true);
+                        return;
+                    } else {
+                        mPlaybackState = PlaybackState.IDLE;
+                        updatePlaybackLocation(PlaybackLocation.REMOTE);
+                    }
+                }
+                updatePlayButton(mPlaybackState);
+                supportInvalidateOptionsMenu();
+            }
+
+            private void onApplicationDisconnected() {
+                updatePlaybackLocation(PlaybackLocation.LOCAL);
+                mPlaybackState = PlaybackState.IDLE;
+                mLocation = PlaybackLocation.LOCAL;
+                updatePlayButton(mPlaybackState);
+                supportInvalidateOptionsMenu();
+            }
+        };
+    }
+
+    private void loadRemoteMedia(int position, boolean autoPlay) {
+        if (mCastSession == null) {
+            return;
+        }
+        RemoteMediaClient remoteMediaClient = mCastSession.getRemoteMediaClient();
+        if (remoteMediaClient == null) {
+            return;
+        }
+        remoteMediaClient.load(new MediaLoadRequestData.Builder()
+                .setMediaInfo(buildMediaInfo())
+                .setAutoplay(autoPlay)
+                .setCurrentTime(position).build());
+    }
+
+    private MediaInfo buildMediaInfo() {
+        MediaMetadata movieMetadata = new MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE);
+
+        movieMetadata.putString(MediaMetadata.KEY_SUBTITLE, mSelectedMedia.getStudio());
+        movieMetadata.putString(MediaMetadata.KEY_TITLE, mSelectedMedia.getTitle());
+        movieMetadata.addImage(new WebImage(Uri.parse(mSelectedMedia.getImage(0))));
+        movieMetadata.addImage(new WebImage(Uri.parse(mSelectedMedia.getImage(1))));
+
+        return new MediaInfo.Builder(mSelectedMedia.getUrl())
+                .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
+                .setContentType("videos/mp4")
+                .setMetadata(movieMetadata)
+                .setStreamDuration(mSelectedMedia.getDuration() * 1000)
+                .build();
     }
 }
