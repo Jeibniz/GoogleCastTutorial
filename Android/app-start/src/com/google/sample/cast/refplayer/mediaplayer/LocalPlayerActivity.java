@@ -32,6 +32,7 @@ import com.google.android.gms.cast.MediaInfo;
 import com.google.android.gms.cast.MediaLoadOptions;
 import com.google.android.gms.cast.MediaMetadata;
 import com.google.android.gms.common.images.WebImage;
+import com.google.android.gms.cast.framework.CastButtonFactory;
 
 
 import android.annotation.SuppressLint;
@@ -102,6 +103,7 @@ public class LocalPlayerActivity extends AppCompatActivity {
     private CastContext mCastContext;
     private CastSession mCastSession;
     private SessionManagerListener<CastSession> mSessionManagerListener;
+    private MenuItem mediaRouteMenuItem;
 
     /**
      * indicates whether we are doing a local or a remote playback
@@ -604,6 +606,7 @@ public class LocalPlayerActivity extends AppCompatActivity {
     public boolean onCreateOptionsMenu(Menu menu) {
         super.onCreateOptionsMenu(menu);
         getMenuInflater().inflate(R.menu.browse, menu);
+        mediaRouteMenuItem = CastButtonFactory.setUpMediaRouteButton(getApplicationContext(), menu, R.id.media_route_menu_item);
         return true;
     }
 
