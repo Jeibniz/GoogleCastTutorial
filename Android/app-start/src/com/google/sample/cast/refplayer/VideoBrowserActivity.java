@@ -19,6 +19,9 @@ package com.google.sample.cast.refplayer;
 import com.google.android.gms.cast.framework.CastContext;
 import com.google.sample.cast.refplayer.settings.CastPreference;
 import com.google.android.gms.cast.framework.CastButtonFactory;
+import com.google.android.gms.cast.framework.IntroductoryOverlay;
+import com.google.android.gms.cast.framework.CastState;
+import com.google.android.gms.cast.framework.CastStateListener;
 
 import android.content.Intent;
 import android.os.Build;
@@ -28,6 +31,7 @@ import androidx.appcompat.widget.Toolbar;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.os.Handler;
 
 public class VideoBrowserActivity extends AppCompatActivity {
 
@@ -36,6 +40,8 @@ public class VideoBrowserActivity extends AppCompatActivity {
     private Toolbar mToolbar;
     private CastContext mCastContext;
     private MenuItem mediaRouteMenuItem;
+    private IntroductoryOverlay mIntroductoryOverlay;
+    private CastStateListener mCastStateListener;
 
     /*
      * (non-Javadoc)
@@ -46,6 +52,15 @@ public class VideoBrowserActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.video_browser);
         setupActionBar();
+
+        mCastStateListener = new CastStateListener() {
+            @Override
+            public void onCastStateChanged(int newState) {
+                if (newState != CastState.NO_DEVICES_AVAILABLE) {
+                    showIntroductoryOverlay();
+                }
+            }
+        };
 
         mCastContext = CastContext.getSharedInstance(this);
     }
@@ -76,10 +91,49 @@ public class VideoBrowserActivity extends AppCompatActivity {
         return true;
     }
 
+
+    @Override
+    protected void onResume() {
+        mCastContext.addCastStateListener(mCastStateListener);
+        super.onResume();
+    }
+
+    @Override
+    protected void onPause() {
+        mCastContext.removeCastStateListener(mCastStateListener);
+        super.onPause();
+    }
+
     @Override
     protected void onDestroy() {
         Log.d(TAG, "onDestroy is called");
         super.onDestroy();
+    }
+
+    private void showIntroductoryOverlay() {
+        if (mIntroductoryOverlay != null) {
+            mIntroductoryOverlay.remove();
+        }
+        if ((mediaRouteMenuItem != null) && mediaRouteMenuItem.isVisible()) {
+            new Handler().post(new Runnable() {
+                @Override
+                public void run() {
+                    mIntroductoryOverlay = new IntroductoryOverlay.Builder(
+                            VideoBrowserActivity.this, mediaRouteMenuItem)
+                            .setTitleText("Introducing Cast")
+                            .setSingleTime()
+                            .setOnOverlayDismissedListener(
+                                    new IntroductoryOverlay.OnOverlayDismissedListener() {
+                                        @Override
+                                        public void onOverlayDismissed() {
+                                            mIntroductoryOverlay = null;
+                                        }
+                                    })
+                            .build();
+                    mIntroductoryOverlay.show();
+                }
+            });
+        }
     }
 
 }
