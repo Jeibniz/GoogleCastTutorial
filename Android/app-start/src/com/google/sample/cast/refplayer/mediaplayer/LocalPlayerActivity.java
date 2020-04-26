@@ -21,6 +21,7 @@ import com.android.volley.toolbox.NetworkImageView;
 import com.google.android.gms.cast.MediaLoadRequestData;
 import com.google.android.gms.cast.framework.CastContext;
 import com.google.sample.cast.refplayer.R;
+import com.google.sample.cast.refplayer.expandedcontrols.ExpandedControlsActivity;
 import com.google.sample.cast.refplayer.settings.CastPreference;
 import com.google.sample.cast.refplayer.utils.CustomVolleyRequest;
 import com.google.sample.cast.refplayer.utils.MediaItem;
@@ -725,10 +726,20 @@ public class LocalPlayerActivity extends AppCompatActivity {
         if (mCastSession == null) {
             return;
         }
-        RemoteMediaClient remoteMediaClient = mCastSession.getRemoteMediaClient();
+        final RemoteMediaClient remoteMediaClient = mCastSession.getRemoteMediaClient();
         if (remoteMediaClient == null) {
             return;
         }
+
+        remoteMediaClient.registerCallback(new RemoteMediaClient.Callback() {
+            @Override
+            public void onStatusUpdated() {
+                Intent intent = new Intent(LocalPlayerActivity.this, ExpandedControlsActivity.class);
+                startActivity(intent);
+                remoteMediaClient.unregisterCallback(this);
+            }
+        });
+
         remoteMediaClient.load(new MediaLoadRequestData.Builder()
                 .setMediaInfo(buildMediaInfo())
                 .setAutoplay(autoPlay)
